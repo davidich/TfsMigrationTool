@@ -21,14 +21,20 @@
 
             DeleteAllWorkItems(project: "Connect");
 
-            CopyIteration("DeloitteConnect\\Release 2\\Sprint 3");
+            var map = StructureHelper.GetIterationMap(sourceProjectName: "DeloitteConnect", targetProjectName: "Connect");
+            CopyIteration("DeloitteConnect\\Release 2.1", map);
+            CopyIteration("DeloitteConnect\\Release 3", map);
+            CopyIteration("DeloitteConnect\\Release 4", map);
+            CopyIteration("DeloitteConnect\\Release 5", map);
+
+            CopyIteration("DeloitteConnect\\Release 2", map);
             
             Console.WriteLine();
             Console.WriteLine("Freedom!!!");
             Console.ReadLine();
-        }        
+        }
 
-        private static void CopyIteration(string iterationPath)
+        private static void CopyIteration(string iterationPath, Dictionary<int, int> iterationMap)
         {
             var items = GetWorkItems("DeloitteConnect", iterationPath: iterationPath);
 
@@ -37,20 +43,20 @@
 
             foreach (WorkItem item in items)
             {
-                CopyItem(item);
+                CopyItem(item, iterationMap);
             }
         }
 
         private static readonly Dictionary<int, int> IdMap = new Dictionary<int, int>();
 
-        private static void CopyItem(int itemId)
+        private static void CopyItem(int itemId, Dictionary<int, int> iterationMap)
         {
             var item = GetWorkItemById(itemId);
-            CopyItem(item);
+            CopyItem(item, iterationMap);
         }
 
         private static int cnt = 1;
-        private static void CopyItem(WorkItem item)
+        private static void CopyItem(WorkItem item, Dictionary<int, int> iterationMap)
         {
             if (IdMap.ContainsKey(item.Id))
                 return;
@@ -69,7 +75,7 @@
                 int copiedParentId;
                 if (!IdMap.TryGetValue(parentItemId, out copiedParentId))
                 {
-                    CopyItem(parentItemId);
+                    CopyItem(parentItemId, iterationMap);
                     copiedParentId = IdMap[parentItemId];                    
                 }
                 
@@ -85,7 +91,7 @@
             copiedItem.Tags = item.Tags;
             
             // Set proper iteration
-            copiedItem.IterationId = 17749;
+            copiedItem.IterationId = iterationMap[item.IterationId];
 
             if (item.AttachedFileCount > 0)
             {

@@ -1,4 +1,7 @@
-﻿namespace TfsMigrationTool
+﻿using System;
+using System.Collections.Generic;
+
+namespace TfsMigrationTool
 {
     using System.Net;
 
@@ -6,6 +9,7 @@
 
     public static class ServiceFactory
     {
+        private static readonly Dictionary<Type, object> ServiceCache = new Dictionary<Type, object>();
         private static readonly NetworkCredential Credentials;
 
         static ServiceFactory()
@@ -15,8 +19,17 @@
 
         public static T Create<T>()
         {
-            var projectCollection = new TfsTeamProjectCollection(Config.TfsCollectionUrl, Credentials);
-            return projectCollection.GetService<T>();               
+            object service;
+
+            if (!ServiceCache.TryGetValue(typeof (T), out service))
+            {
+                var projectCollection = new TfsTeamProjectCollection(Config.TfsCollectionUrl, Credentials);
+                service = projectCollection.GetService<T>();
+                ServiceCache.Add(typeof (T), service);
+                
+            }
+
+            return (T) service;
         }        
     }
 }
