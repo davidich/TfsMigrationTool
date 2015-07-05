@@ -13,30 +13,55 @@ namespace TfsMigrationTool
     // http://blogs.microsoft.co.il/shair/2009/01/30/tfs-api-part-10-add-areaiteration-programmatically/
     public class StructureHelper
     {
+        private static bool _isInited;
+        private static Dictionary<int, int> _iterationMap;
         private static readonly ICommonStructureService4 CommonStructureService;
 
         static StructureHelper()
         {
-            CommonStructureService = ServiceFactory.Create<ICommonStructureService4>(); ;
+            CommonStructureService = ServiceFactory.Create<ICommonStructureService4>();
         }
 
-        public static Dictionary<int, int> GetIterationMap(string sourceProjectName, string targetProjectName)
+        public static void Init(string sourceProjectName, string targetProjectName)
+        {
+            if (_isInited)
+                return;
+
+            _iterationMap = BuildIterationMap(sourceProjectName, targetProjectName);
+            _isInited = true;
+        }
+
+        public static int MapIterationId(int iterationId, string sourceProjectName, string targetProjectName)
+        {
+            Init(sourceProjectName, targetProjectName);
+            return _iterationMap[iterationId];
+        }
+
+        private static Dictionary<int, int> BuildIterationMap(string sourceProjectName, string targetProjectName)
         {
             // Sync iterations
             Console.WriteLine("----Iteration Sync started----");
-            var sourceStructure = GetIterationStructure(sourceProjectName);
+            int sourceCommonNodeId;
+            var sourceStructure = GetIterationStructure(sourceProjectName, out sourceCommonNodeId);
             foreach (var iteration in sourceStructure.Children)
             {
                 SyncIteration(iteration, targetProjectName);
             }
             Console.WriteLine("----Iteration Sync Completed----");
             Console.WriteLine();
-            var targetStructure = GetIterationStructure(targetProjectName);
+            int tartgeCommonNodeId;
+            var targetStructure = GetIterationStructure(targetProjectName, out tartgeCommonNodeId);
 
             // Build map
-            Dictionary<int, int> map = new Dictionary<int, int>();
+            var map = new Dictionary<int, int>
+            {
+                // add root level mapping (common structure node between areas and nodes)
+                {sourceCommonNodeId, tartgeCommonNodeId}
+            };
 
+            // add all iterations
             AddMappingInfo(map, sourceStructure, targetStructure);
+            
             return map;
         }
 
@@ -87,7 +112,7 @@ namespace TfsMigrationTool
         #region Iteration Dates (Start & Finish)
         private static Dictionary<string, ScheduleInfo> GetIterationDates(string projectName)
         {
-            Dictionary<string, ScheduleInfo> result = new Dictionary<string, ScheduleInfo>();
+            var result = new Dictionary<string, ScheduleInfo>();
 
             var iterationStructure = GetXmlStructure(projectName, StructureType.Iteration);
 
@@ -133,7 +158,7 @@ namespace TfsMigrationTool
         }
         #endregion
 
-        public static Iteration GetIterationStructure(string projectName)
+        public static Iteration GetIterationStructure(string projectName, out int commonNodeId)
         {
             var dates = GetIterationDates(projectName);
 
@@ -143,6 +168,7 @@ namespace TfsMigrationTool
             var rootNode = GetRoot(project.IterationRootNodes[0]);
 
             var iteration = Iteration.ParseStructure(rootNode, dates, null);
+            commonNodeId = rootNode.ParentNode.Id;
 
             return iteration;
         }

@@ -12,7 +12,7 @@
     public class AttachmentHelper
     {
         private static readonly Dictionary<int, string> FileCache = new Dictionary<int, string>();
-        private static readonly string AttachmentsFolderPath = Path.Combine(Environment.CurrentDirectory, Config.AttachmentCacheFolder);
+        private static readonly string AttachmentsFolderPath = Config.AttachmentCacheFolder;
 
         static AttachmentHelper()
         {

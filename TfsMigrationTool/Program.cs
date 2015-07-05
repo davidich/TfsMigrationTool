@@ -1,4 +1,7 @@
-﻿namespace TfsMigrationTool
+﻿using System.IO;
+using System.Runtime.InteropServices;
+
+namespace TfsMigrationTool
 {
     using System;
     using System.Collections.Generic;
@@ -12,211 +15,154 @@
     // https://msdn.microsoft.com/en-us/library/dd997576.aspx
     internal class Program
     {
-
-        private static WorkItemStore store;
+        private static readonly Dictionary<int, int> CopiedItemsMap = new Dictionary<int, int>();
 
         public static void Main()
         {
-            store = ServiceFactory.Create<WorkItemStore>();
+            Console.WindowWidth = Console.LargestWindowWidth;
+            Console.WindowHeight = Console.LargestWindowHeight;
+            Console.SetWindowPosition(0, 0);
 
-            DeleteAllWorkItems(project: "Connect");
+            WorkItemHelper.DeleteAll(project: "Connect");
 
-            var map = StructureHelper.GetIterationMap(sourceProjectName: "DeloitteConnect", targetProjectName: "Connect");
-            CopyIteration("DeloitteConnect\\Release 2.1", map);
-            CopyIteration("DeloitteConnect\\Release 3", map);
-            CopyIteration("DeloitteConnect\\Release 4", map);
-            CopyIteration("DeloitteConnect\\Release 5", map);
+            Logger.ClearLogs();
+            StructureHelper.Init("DeloitteConnect", "Connect");
 
-            CopyIteration("DeloitteConnect\\Release 2", map);
-            
+            CopyIteration("DeloitteConnect");
+
+            //CopyIteration("DeloitteConnect\\Release 2");
+            //CopyIteration("DeloitteConnect\\Release 2.1");
+            //CopyIteration("DeloitteConnect\\Release 3");
+            //CopyIteration("DeloitteConnect\\Release 4");
+            //CopyIteration("DeloitteConnect\\Release 5");
+
             Console.WriteLine();
-            Console.WriteLine("Freedom!!!");
+            Console.WriteLine("COMPLETED!!!");
+            Console.WriteLine();
+            Logger.ReportError();
             Console.ReadLine();
         }
 
-        private static void CopyIteration(string iterationPath, Dictionary<int, int> iterationMap)
+        private static void CopyIteration(string iterationPath)
         {
-            var items = GetWorkItems("DeloitteConnect", iterationPath: iterationPath);
+            var items = WorkItemHelper.GetList("DeloitteConnect", iterationPath: iterationPath);
 
             Console.WriteLine();
             Console.WriteLine("---Copying {0} items from iteration {1}", items.Count, iterationPath);
 
             foreach (WorkItem item in items)
             {
-                CopyItem(item, iterationMap);
+                CopyItem(item);
             }
         }
 
-        private static readonly Dictionary<int, int> IdMap = new Dictionary<int, int>();
-
-        private static void CopyItem(int itemId, Dictionary<int, int> iterationMap)
+        private static void CopyItem(int itemId)
         {
-            var item = GetWorkItemById(itemId);
-            CopyItem(item, iterationMap);
+            var item = WorkItemHelper.Get(itemId);
+            CopyItem(item);
         }
 
-        private static int cnt = 1;
-        private static void CopyItem(WorkItem item, Dictionary<int, int> iterationMap)
+        private static void CopyItem(WorkItem item)
         {
-            if (IdMap.ContainsKey(item.Id))
+            if (CopiedItemsMap.ContainsKey(item.Id))
                 return;
 
-            var type = GetWorkItemType(item.Type.Name);
-            var copiedItem = item.Copy(type);
-
-            // Adjust parent tag (if needed)
-            var links = copiedItem.WorkItemLinks.Cast<WorkItemLink>();
-            var parentLink = links.FirstOrDefault(l => l.LinkTypeEnd.Name == "Parent");
-
-            if (parentLink != null)
+            try
             {
-                var parentItemId = parentLink.TargetId;
+                var copiedItem = WorkItemHelper.Copy(item, "Connect");
 
-                int copiedParentId;
-                if (!IdMap.TryGetValue(parentItemId, out copiedParentId))
+                // Remap links (to new copies in a target project)
+                foreach (WorkItemLink link in item.WorkItemLinks)
                 {
-                    CopyItem(parentItemId, iterationMap);
-                    copiedParentId = IdMap[parentItemId];                    
+                    var linkedItem = WorkItemHelper.Get(link.TargetId);
+
+                    // We might have broken links, which refence to a deleted work items
+                    if (linkedItem == null)
+                    {
+                        Logger.Warning("Broken link is skipped: " + link.SourceId + " -> " + link.TargetId);
+                        continue;
+                    }
+
+                    // Create Related link  only after target item is already copied
+                    // Otherwise cross-reference issue will occur
+                    if (link.LinkTypeEnd.Name == "Related")
+                    {
+                        if (CopiedItemsMap.ContainsKey(link.TargetId))
+                        {
+                            copiedItem.AddMappedLink(link, CopiedItemsMap);
+                        }
+                    }
+                    // If that's not "Related" link, then we don'r care about cross-refs,
+                    // But we need to create only Backward links (i.e.: link to parent)
+                    // As Forward links (i.e.: link to child) will created once item on the other side of this link will be copied
+                    else if (!link.LinkTypeEnd.IsForwardLink)
+                    {
+                        if (!CopiedItemsMap.ContainsKey(link.TargetId))
+                        {
+                            CopyItem(link.TargetId);
+                        }
+
+                        copiedItem.AddMappedLink(link, CopiedItemsMap);
+                    }
                 }
-                
-                //Remove original one
-                copiedItem.WorkItemLinks.Remove(parentLink);
 
-                // Add updated one
-                var linkType = store.WorkItemLinkTypes[CoreLinkTypeReferenceNames.Hierarchy];
-                copiedItem.WorkItemLinks.Add(new WorkItemLink(linkType.ReverseEnd, copiedParentId));
-            }
+                // Set proper iteration
+                copiedItem.IterationId = StructureHelper.MapIterationId(item.IterationId, item.Project.Name,
+                    copiedItem.Project.Name);
 
-            // Copy Tags
-            copiedItem.Tags = item.Tags;
-            
-            // Set proper iteration
-            copiedItem.IterationId = iterationMap[item.IterationId];
+                ValidateAndSave(item, copiedItem);
 
-            if (item.AttachedFileCount > 0)
-            {
-                foreach (Attachment scrAtt in item.Attachments)
+                // Set proper state
+                if (copiedItem.State != item.State)
                 {
-                    var copiedAtt = AttachmentHelper.Copy(scrAtt);
-                    copiedItem.Attachments.Add(copiedAtt);
+                    copiedItem.State = item.State;
+                    if (copiedItem.Reason != item.Reason)
+                    {
+                        Logger.LogPartialCopy(item, copiedItem.Id, new PartialCopyInfo
+                        {
+                            FieldName = "Reason", 
+                            Value = copiedItem.Reason, 
+                            ExpectedValue = item.Reason
+                        });
+                    }
+
+                    ValidateAndSave(item, copiedItem);
                 }
+
+                // Update Id Map
+                CopiedItemsMap.Add(item.Id, copiedItem.Id);
+
+                StatusReporter.ReportCopySucces(item, copiedItem);
             }
-
-            ValidateAndSave(copiedItem);
-
-            // Set proper state
-            if (copiedItem.State != item.State)
+            catch (Exception ex)
             {
-                copiedItem.State = item.State;
-                //copiedItem.Reason = item.Reason;
-
-                ValidateAndSave(copiedItem);
+                StatusReporter.ReportCopyFailure(item, ex);
             }
-
-            // Update Id Map
-            IdMap.Add(item.Id, copiedItem.Id);
-
-            Console.WriteLine("{0}) #{1} -> #{2}: {3}", cnt++, item.Id, copiedItem.Id, item.Title);
         }
 
-        private static void ValidateAndSave(WorkItem copiedItem)
+        private static void ValidateAndSave(WorkItem srcItem, WorkItem copiedItem)
         {
             var errors = copiedItem.Validate();
 
             if (errors.Count > 0)
             {
-                Console.Write("Item #{0} can't be saved. The following fields are incorrect: ");
-                var isFirstFieldWritten = false;
+                var partialCopyInfos = new List<PartialCopyInfo>();
                 foreach (Field field in errors)
                 {
-                    if (isFirstFieldWritten)
+                    partialCopyInfos.Add(new PartialCopyInfo
                     {
-                        Console.Write(", ");
-                    }
+                        FieldName = field.Name,
+                        Value = field.OriginalValue.ToString(),
+                        ExpectedValue = field.Value.ToString()
+                    });
 
-                    Console.Write(field);
-                    isFirstFieldWritten = true;
+                    copiedItem[field.Name] = field.OriginalValue;
                 }
+
+                Logger.LogPartialCopy(srcItem, copiedItem.Id, partialCopyInfos.ToArray());
             }
 
             copiedItem.Save();
-        }
-
-        private static WorkItemType GetWorkItemType(string typeName)
-        {
-            var targetProject = store.Projects["Connect"];
-            var type = targetProject.WorkItemTypes[typeName];
-            return type;
-        }
-
-        private static void DeleteAllWorkItems(string project)
-        {
-            WorkItemCollection workItems = GetWorkItems(project, areaPath: "Connect");
-
-            if (workItems.Count > 0)
-            {
-                Console.WriteLine();
-                var header = string.Format("-----Deleting {0} items------", workItems.Count);
-                Console.WriteLine(header);
-                Console.WriteLine("Started...");
-
-                try
-                {
-                    Console.WriteLine("Deleting....");
-
-                    IEnumerable<int> workItemIds = from WorkItem wi in workItems
-                                                   select wi.Id;
-
-                    IEnumerable<WorkItemOperationError> itemOperationErrors = store.DestroyWorkItems(workItemIds);
-                    
-                    foreach (var error in itemOperationErrors)
-                    {
-                        Console.WriteLine(error.ToString());
-                    }
-
-                    Console.WriteLine("Completed");
-                    Console.WriteLine(string.Join("", Enumerable.Repeat("-", header.Length)));
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Delete failed:");
-                    Console.WriteLine(ex.Message);
-                    Console.WriteLine();
-                    Console.WriteLine("Press ENTER to exit");
-                    Console.ReadLine();
-                }
-            }                                 
-        }
-
-        private static WorkItemCollection GetWorkItems(string projectName, string areaPath = null, string iterationPath = null)
-        {
-            var builder = new StringBuilder();
-            builder.AppendFormat(@"SELECT [System.Id] " +
-                                 "FROM WorkItems " +
-                                 "WHERE [System.TeamProject] = '{0}'", projectName);
-
-            if (!string.IsNullOrWhiteSpace(areaPath))
-                builder.AppendFormat(" AND  [System.AreaPath] UNDER '{0}'", areaPath);
-
-            if (!string.IsNullOrWhiteSpace(iterationPath))
-                builder.AppendFormat(" AND  [System.IterationPath] UNDER '{0}'", iterationPath);
-
-            builder.Append(" ORDER BY [System.Id]");
-
-            WorkItemCollection wis = store.Query(builder.ToString());
-
-            return wis;
-        }
-
-        private static WorkItem GetWorkItemById(int id)
-        {
-            var builder = new StringBuilder();
-            builder.AppendFormat(@"SELECT [System.Id] " +
-                                 "FROM WorkItems " +
-                                 "WHERE [System.Id] = '{0}'", id);
-
-            WorkItemCollection wis = store.Query(builder.ToString());
-            return wis[0];
         }
     }
 }
