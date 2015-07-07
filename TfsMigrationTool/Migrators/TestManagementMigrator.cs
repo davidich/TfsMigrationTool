@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using JetBrains.Annotations;
 using Microsoft.TeamFoundation.TestManagement.Client;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
 using TfsMigrationTool.Utils;
@@ -15,14 +16,24 @@ namespace TfsMigrationTool.Migrators
         private readonly ITestManagementTeamProject _deloitteConnectProject;
         private readonly ITestManagementTeamProject _connectProject;
 
+        public static readonly Dictionary<int, IdAndName> TargetConfigs = new Dictionary<int, IdAndName>
+        {
+            {953, new IdAndName(953, "Google Chrome")},
+            {954, new IdAndName(954, "Mozilla Firefox")},
+            {956, new IdAndName(956, "Internet Explorer 11.0")},
+            {955, new IdAndName(955, "Internet Explorer 9.0")},
+            {957, new IdAndName(957, "Safari")},
+            {922, new IdAndName(922, "Windows 7")}
+        };
+
         private static readonly Dictionary<int, IdAndName> ConfigMap = new Dictionary<int, IdAndName>
         {
-            {651, new IdAndName(953, "Google Chrome")}, // Chrome
-            {653, new IdAndName(954, "Mozilla Firefox")}, // FF
-            {650, new IdAndName(956, "Internet Explorer 11.0")}, // IE 11
-            {649, new IdAndName(955, "Internet Explorer 9.0")}, // IE 9
-            {652, new IdAndName(957, "Safari")}, // Safari
-            {541, new IdAndName(922, "Windows 7")} // Windows
+            {651, TargetConfigs[953]},  // Chrome
+            {653, TargetConfigs[954]},  // FF
+            {650, TargetConfigs[956]},  // IE 11
+            {649, TargetConfigs[955]},  // IE 9
+            {652, TargetConfigs[957]},  // Safari
+            {541, TargetConfigs[922]}   // Windows
         };
 
         public TestManagementMigrator(string sourceProjectName, string targetProjectName)
