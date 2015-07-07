@@ -1,5 +1,7 @@
 ﻿using System.IO;
 using System.Runtime.InteropServices;
+using Microsoft.TeamFoundation.TestManagement.Client;
+using TfsMigrationTool.Migrators;
 
 namespace TfsMigrationTool
 {
@@ -15,154 +17,54 @@ namespace TfsMigrationTool
     // https://msdn.microsoft.com/en-us/library/dd997576.aspx
     internal class Program
     {
-        private static readonly Dictionary<int, int> CopiedItemsMap = new Dictionary<int, int>();
-
         public static void Main()
         {
             Console.WindowWidth = Console.LargestWindowWidth;
             Console.WindowHeight = Console.LargestWindowHeight;
             Console.SetWindowPosition(0, 0);
 
-            WorkItemHelper.DeleteAll(project: "Connect");
+            CopyWorkItems();
 
-            Logger.ClearLogs();
-            StructureHelper.Init("DeloitteConnect", "Connect");
+            CopyTestManagementItems();
 
-            CopyIteration("DeloitteConnect");
-
-            //CopyIteration("DeloitteConnect\\Release 2");
-            //CopyIteration("DeloitteConnect\\Release 2.1");
-            //CopyIteration("DeloitteConnect\\Release 3");
-            //CopyIteration("DeloitteConnect\\Release 4");
-            //CopyIteration("DeloitteConnect\\Release 5");
-
-            Console.WriteLine();
             Console.WriteLine("COMPLETED!!!");
             Console.WriteLine();
-            Logger.ReportError();
+            Console.WriteLine("Press ENTER to exit.");
             Console.ReadLine();
         }
 
-        private static void CopyIteration(string iterationPath)
+        private static void CopyWorkItems()
         {
-            var items = WorkItemHelper.GetList("DeloitteConnect", iterationPath: iterationPath);
-
+            Console.WriteLine("-----------------------------------------");
+            Console.WriteLine("----------------WORK ITEMS --------------");
+            Console.WriteLine("-----------------------------------------");
             Console.WriteLine();
-            Console.WriteLine("---Copying {0} items from iteration {1}", items.Count, iterationPath);
 
-            foreach (WorkItem item in items)
-            {
-                CopyItem(item);
-            }
+            var migrator = new WorkItemMigrator(Config.SourceProject, Config.TargetProject);
+
+            migrator.MigrateIterationPath("DeloitteConnect");
+
+            //migrator.MigrateIterationPath("DeloitteConnect\\Release 2");
+            //migrator.MigrateIterationPath("DeloitteConnect\\Release 2.1");
+            //migrator.MigrateIterationPath("DeloitteConnect\\Release 3");
+            //migrator.MigrateIterationPath("DeloitteConnect\\Release 4");
+            //migrator.MigrateIterationPath("DeloitteConnect\\Release 5");
+
+            Console.WriteLine();            
         }
 
-        private static void CopyItem(int itemId)
+        private static void CopyTestManagementItems()
         {
-            var item = WorkItemHelper.Get(itemId);
-            CopyItem(item);
-        }
+            Console.WriteLine("------------------------------------------");
+            Console.WriteLine("-----------TEST MANAGEMENT ITEMS----------");
+            Console.WriteLine("------------------------------------------");
+            Console.WriteLine();
 
-        private static void CopyItem(WorkItem item)
-        {
-            if (CopiedItemsMap.ContainsKey(item.Id))
-                return;
+            var migrator = new TestManagementMigrator(Config.SourceProject, Config.TargetProject);
 
-            try
-            {
-                var copiedItem = WorkItemHelper.Copy(item, "Connect");
-
-                // Remap links (to new copies in a target project)
-                foreach (WorkItemLink link in item.WorkItemLinks)
-                {
-                    var linkedItem = WorkItemHelper.Get(link.TargetId);
-
-                    // We might have broken links, which refence to a deleted work items
-                    if (linkedItem == null)
-                    {
-                        Logger.Warning("Broken link is skipped: " + link.SourceId + " -> " + link.TargetId);
-                        continue;
-                    }
-
-                    // Create Related link  only after target item is already copied
-                    // Otherwise cross-reference issue will occur
-                    if (link.LinkTypeEnd.Name == "Related")
-                    {
-                        if (CopiedItemsMap.ContainsKey(link.TargetId))
-                        {
-                            copiedItem.AddMappedLink(link, CopiedItemsMap);
-                        }
-                    }
-                    // If that's not "Related" link, then we don'r care about cross-refs,
-                    // But we need to create only Backward links (i.e.: link to parent)
-                    // As Forward links (i.e.: link to child) will created once item on the other side of this link will be copied
-                    else if (!link.LinkTypeEnd.IsForwardLink)
-                    {
-                        if (!CopiedItemsMap.ContainsKey(link.TargetId))
-                        {
-                            CopyItem(link.TargetId);
-                        }
-
-                        copiedItem.AddMappedLink(link, CopiedItemsMap);
-                    }
-                }
-
-                // Set proper iteration
-                copiedItem.IterationId = StructureHelper.MapIterationId(item.IterationId, item.Project.Name,
-                    copiedItem.Project.Name);
-
-                ValidateAndSave(item, copiedItem);
-
-                // Set proper state
-                if (copiedItem.State != item.State)
-                {
-                    copiedItem.State = item.State;
-                    if (copiedItem.Reason != item.Reason)
-                    {
-                        Logger.LogPartialCopy(item, copiedItem.Id, new PartialCopyInfo
-                        {
-                            FieldName = "Reason", 
-                            Value = copiedItem.Reason, 
-                            ExpectedValue = item.Reason
-                        });
-                    }
-
-                    ValidateAndSave(item, copiedItem);
-                }
-
-                // Update Id Map
-                CopiedItemsMap.Add(item.Id, copiedItem.Id);
-
-                StatusReporter.ReportCopySucces(item, copiedItem);
-            }
-            catch (Exception ex)
-            {
-                StatusReporter.ReportCopyFailure(item, ex);
-            }
-        }
-
-        private static void ValidateAndSave(WorkItem srcItem, WorkItem copiedItem)
-        {
-            var errors = copiedItem.Validate();
-
-            if (errors.Count > 0)
-            {
-                var partialCopyInfos = new List<PartialCopyInfo>();
-                foreach (Field field in errors)
-                {
-                    partialCopyInfos.Add(new PartialCopyInfo
-                    {
-                        FieldName = field.Name,
-                        Value = field.OriginalValue.ToString(),
-                        ExpectedValue = field.Value.ToString()
-                    });
-
-                    copiedItem[field.Name] = field.OriginalValue;
-                }
-
-                Logger.LogPartialCopy(srcItem, copiedItem.Id, partialCopyInfos.ToArray());
-            }
-
-            copiedItem.Save();
+            migrator.CopyTestPlan(1162, 1301);
+            migrator.CopyTestPlan(895, 1299);
+            migrator.CopyTestPlan(966, 1300);
         }
     }
 }

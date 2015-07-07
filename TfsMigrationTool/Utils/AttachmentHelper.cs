@@ -1,14 +1,12 @@
-﻿namespace TfsMigrationTool
+﻿using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Net;
+using Microsoft.TeamFoundation.WorkItemTracking.Client;
+
+namespace TfsMigrationTool.Utils
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Globalization;
-    using System.IO;
-    using System.Linq;
-    using System.Net;
-
-    using Microsoft.TeamFoundation.WorkItemTracking.Client;
-
     public class AttachmentHelper
     {
         private static readonly Dictionary<int, string> FileCache = new Dictionary<int, string>();

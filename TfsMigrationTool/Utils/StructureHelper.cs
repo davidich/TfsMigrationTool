@@ -1,43 +1,31 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Xml;
+using Microsoft.TeamFoundation.Server;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
 
-namespace TfsMigrationTool
+namespace TfsMigrationTool.Utils
 {
-    using System;
-    using System.Xml;
-
-    using Microsoft.TeamFoundation.Server;
-
     // http://blogs.microsoft.co.il/shair/2009/01/30/tfs-api-part-9-get-areaiteration-programmatically/
     // http://blogs.microsoft.co.il/shair/2009/01/30/tfs-api-part-10-add-areaiteration-programmatically/
     public class StructureHelper
     {
-        private static bool _isInited;
-        private static Dictionary<int, int> _iterationMap;
-        private static readonly ICommonStructureService4 CommonStructureService;
+        private static readonly ICommonStructureService4 CommonStructureService = ServiceFactory.Create<ICommonStructureService4>();
 
-        static StructureHelper()
+        private readonly Dictionary<int, int> _iterationMap;
+
+        public StructureHelper(string sourceProjectName, string targetProjectName)
         {
-            CommonStructureService = ServiceFactory.Create<ICommonStructureService4>();
+            _iterationMap = BuildIterationMap(sourceProjectName, targetProjectName);            
         }
-
-        public static void Init(string sourceProjectName, string targetProjectName)
+        
+        public int MapIterationId(int iterationId)
         {
-            if (_isInited)
-                return;
-
-            _iterationMap = BuildIterationMap(sourceProjectName, targetProjectName);
-            _isInited = true;
-        }
-
-        public static int MapIterationId(int iterationId, string sourceProjectName, string targetProjectName)
-        {
-            Init(sourceProjectName, targetProjectName);
             return _iterationMap[iterationId];
         }
 
-        private static Dictionary<int, int> BuildIterationMap(string sourceProjectName, string targetProjectName)
+        private Dictionary<int, int> BuildIterationMap(string sourceProjectName, string targetProjectName)
         {
             // Sync iterations
             Console.WriteLine("----Iteration Sync started----");
@@ -65,7 +53,7 @@ namespace TfsMigrationTool
             return map;
         }
 
-        private static void SyncIteration(Iteration srcIteration, string targetProjectName)
+        private void SyncIteration(Iteration srcIteration, string targetProjectName)
         {
             Console.Write("syncing: '{0}'", srcIteration.Path);
             CreateOrUpdateIteration(targetProjectName, srcIteration.GetRelativePath(), srcIteration.Start, srcIteration.Finish);
@@ -78,7 +66,7 @@ namespace TfsMigrationTool
             }
         }
 
-        private static void AddMappingInfo(Dictionary<int, int> map, Iteration srcIteration, Iteration allTargetIterations)
+        private void AddMappingInfo(Dictionary<int, int> map, Iteration srcIteration, Iteration allTargetIterations)
         {
             var srcId = srcIteration.Id;
             var srcRelativePath = srcIteration.GetRelativePath();
@@ -93,7 +81,7 @@ namespace TfsMigrationTool
         }
 
         #region Project strutures (XML trees)
-        private static XmlNode GetXmlStructure(string projectName, StructureType type)
+        private XmlNode GetXmlStructure(string projectName, StructureType type)
         {
             ProjectInfo projectInfo = CommonStructureService.GetProjectFromName(projectName);
             NodeInfo[] structures = CommonStructureService.ListStructures(projectInfo.Uri);
@@ -110,7 +98,7 @@ namespace TfsMigrationTool
         #endregion
 
         #region Iteration Dates (Start & Finish)
-        private static Dictionary<string, ScheduleInfo> GetIterationDates(string projectName)
+        private Dictionary<string, ScheduleInfo> GetIterationDates(string projectName)
         {
             var result = new Dictionary<string, ScheduleInfo>();
 
@@ -121,7 +109,7 @@ namespace TfsMigrationTool
             return result;
         }
 
-        private static void ParseIterationDates(XmlNode node, Dictionary<string, ScheduleInfo> result)
+        private void ParseIterationDates(XmlNode node, Dictionary<string, ScheduleInfo> result)
         {
             if (node == null)
                 return;
@@ -147,7 +135,7 @@ namespace TfsMigrationTool
             }
         }
 
-        private static DateTime? ParseDateTimeAttribute(XmlNode node, string attributeName)
+        private DateTime? ParseDateTimeAttribute(XmlNode node, string attributeName)
         {
             string stringValue = node.Attributes[attributeName] != null ? node.Attributes[attributeName].Value : null;
 
@@ -158,7 +146,7 @@ namespace TfsMigrationTool
         }
         #endregion
 
-        public static Iteration GetIterationStructure(string projectName, out int commonNodeId)
+        public Iteration GetIterationStructure(string projectName, out int commonNodeId)
         {
             var dates = GetIterationDates(projectName);
 
@@ -173,7 +161,7 @@ namespace TfsMigrationTool
             return iteration;
         }
 
-        private static Node GetRoot(Node node)
+        private Node GetRoot(Node node)
         {
             Node root = node;
             Node parent = node.ParentNode;
@@ -186,7 +174,7 @@ namespace TfsMigrationTool
             return root;
         }
 
-        public static NodeInfo CreateOrUpdateIteration(string projectName, string relativePath, DateTime? start = null, DateTime? finish = null)
+        private NodeInfo CreateOrUpdateIteration(string projectName, string relativePath, DateTime? start = null, DateTime? finish = null)
         {
             bool isNewCreated = false;
             bool isDateUpdated = false;
@@ -231,7 +219,7 @@ namespace TfsMigrationTool
             return iterationNode;
         }
 
-        private static NodeInfo TryGetNode(string path)
+        private NodeInfo TryGetNode(string path)
         {
             try
             {
@@ -250,13 +238,13 @@ namespace TfsMigrationTool
         }
     }
 
-    public enum StructureType
+    internal enum StructureType
     {
         Iteration = 0,
         Area = 1
     }
 
-    public class ScheduleInfo
+    internal class ScheduleInfo
     {
         public DateTime? StartDate { get; set; }
         public DateTime? FinishDate { get; set; }
@@ -280,7 +268,7 @@ namespace TfsMigrationTool
             Children = new List<Iteration>();
         }
 
-        public static Iteration ParseStructure(Node node, Dictionary<string, ScheduleInfo> dates, Iteration parent)
+        internal static Iteration ParseStructure(Node node, Dictionary<string, ScheduleInfo> dates, Iteration parent)
         {
             var iteration = new Iteration
             {

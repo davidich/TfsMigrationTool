@@ -1,11 +1,10 @@
-﻿namespace TfsMigrationTool
+﻿using System;
+using System.IO;
+using System.Net;
+using Microsoft.TeamFoundation.Client;
+
+namespace TfsMigrationTool.Utils
 {
-    using System;
-    using System.IO;
-    using System.Net;
-
-    using Microsoft.TeamFoundation.Client;
-
     public class TfsAuthorizer
     {
         private static NetworkCredential credentials;

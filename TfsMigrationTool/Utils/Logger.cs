@@ -1,47 +1,52 @@
 ﻿using System;
 using System.IO;
-using System.Text;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
 
-namespace TfsMigrationTool
+namespace TfsMigrationTool.Utils
 {
-    public static class Logger
+    public class Logger
     {
-        private static int copyFailureCnt = 0;
-        private static int brokenLinkCnt = 0;
-        private static readonly string LogPath = Path.Combine(Environment.CurrentDirectory, "Logs");
-        private static readonly string DebugLogPath = Path.Combine(LogPath, "Debug.log");
-        private static readonly string CopyFailureLogPath = Path.Combine(LogPath, "FailedItems.log");
-        private static readonly string BrokenLinksLogPath = Path.Combine(LogPath, "BrokenLinks.log");
+        private readonly string _logFolderPath;
+        private int _copyFailureCnt;
+        private int _brokenLinkCnt;
+        private readonly string _debugLogPath;
+        private readonly string _copyFailureLogPath;
+        private readonly string _brokenLinksLogPath;
 
-        static Logger()
+        public Logger(string logFolderPath)
         {
-            if (!Directory.Exists(LogPath))
+            _logFolderPath = logFolderPath;
+
+            _debugLogPath = Path.Combine(logFolderPath, "Debug.log");
+            _copyFailureLogPath = Path.Combine(logFolderPath, "FailedItems.log");
+            _brokenLinksLogPath = Path.Combine(logFolderPath, "BrokenLinks.log");
+
+            if (!Directory.Exists(logFolderPath))
             {
-                Directory.CreateDirectory(LogPath);
+                Directory.CreateDirectory(logFolderPath);
             }
         }
 
-        public static void ClearLogs()
+        public void ClearLogs()
         {
-            foreach (var file in Directory.GetFiles(LogPath))
+            foreach (var file in Directory.GetFiles(_logFolderPath))
             {
                 File.Delete(file);
             }
         }
 
-        public static void Warning(string text)
+        public void Warning(string text)
         {
-            using (var writer = File.AppendText(DebugLogPath))
+            using (var writer = File.AppendText(_debugLogPath))
             {
                 writer.WriteLine("{0:T} [WARNING]: {1}", DateTime.Now, text);
                 writer.WriteLine();
             }
         }
 
-        public static void LogPartialCopy(WorkItem srcItem, int targetItemId = 0, params PartialCopyInfo[] infos)
+        public void LogPartialCopy(WorkItem srcItem, int targetItemId = 0, params PartialCopyInfo[] infos)
         {
-            using (var writer = File.AppendText(DebugLogPath))
+            using (var writer = File.AppendText(_debugLogPath))
             {
                 writer.WriteLine("{0:T} [PARTIAL COPY]: #{1} - '{2}'",
                     DateTime.Now,
@@ -57,38 +62,36 @@ namespace TfsMigrationTool
             }
         }
 
-
-
-        public static void LogCopyFailure(WorkItem item, Exception exception)
+        public void LogCopyFailure(WorkItem item, Exception exception)
         {
-            using (var writer = File.AppendText(CopyFailureLogPath))
+            using (var writer = File.AppendText(_copyFailureLogPath))
             {
                 writer.WriteLine("{0:T}: {1} - '{2}'", DateTime.Now, item.Id, item.Title);
                 writer.WriteLine(exception);
                 writer.WriteLine();
             }
 
-            copyFailureCnt++;
+            _copyFailureCnt++;
         }
 
-        public static void LogBrokenLink(int sourceId, WorkItemLink link)
+        public void LogBrokenLink(int sourceId, WorkItemLink link)
         {
-            using (var writer = File.AppendText(BrokenLinksLogPath))
+            using (var writer = File.AppendText(_brokenLinksLogPath))
             {
                 writer.WriteLine("{0:T}: SourceId: {1}, TargetId: '{2}', type: {3}", DateTime.Now, sourceId, link.TargetId, link.LinkTypeEnd.Name);
             }
 
-            brokenLinkCnt++;
+            _brokenLinkCnt++;
         }
 
-        public static void ReportError()
+        public void ReportError()
         {
-            if (brokenLinkCnt > 0)
+            if (_brokenLinkCnt > 0)
             {
                 Console.WriteLine("---------------------------");
-                Console.WriteLine("{0} BROKEN LINK(S) OCCURED. Details", brokenLinkCnt);
+                Console.WriteLine("{0} BROKEN LINK(S) OCCURED. Details", _brokenLinkCnt);
                 Console.WriteLine();
-                using (var reader = File.OpenText(BrokenLinksLogPath))
+                using (var reader = File.OpenText(_brokenLinksLogPath))
                 {
                     string s;
                     while ((s = reader.ReadLine()) != null)
@@ -99,12 +102,12 @@ namespace TfsMigrationTool
                 Console.WriteLine("");
             }
 
-            if (copyFailureCnt > 0)
+            if (_copyFailureCnt > 0)
             {
                 Console.WriteLine("---------------------------");
-                Console.WriteLine("{0} ITEMS FAILED.", copyFailureCnt);
+                Console.WriteLine("{0} ITEMS FAILED.", _copyFailureCnt);
                 Console.WriteLine();
-                using (var reader = File.OpenText(CopyFailureLogPath))
+                using (var reader = File.OpenText(_copyFailureLogPath))
                 {
                     string s;
                     while ((s = reader.ReadLine()) != null)

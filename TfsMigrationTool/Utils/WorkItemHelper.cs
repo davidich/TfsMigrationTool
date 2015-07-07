@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
 
-namespace TfsMigrationTool
+namespace TfsMigrationTool.Utils
 {
     public static class WorkItemHelper
     {
@@ -21,15 +21,10 @@ namespace TfsMigrationTool
                     item = Store.GetWorkItem(workItemId);
                     Cache[workItemId] = item;
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Logger.Warning(string.Format("Failed to retreive item #{0}{1}Details:{2}",
-                        workItemId,
-                        Environment.NewLine,
-                        ex));
-
                     return null;
-                }                               
+                }
             }
 
             return item;
@@ -76,10 +71,10 @@ namespace TfsMigrationTool
 
             return copiedItem;
         }
-        
-        public static void DeleteAll(string project)
+
+        public static void DeleteItems(string project, string iterationPath)
         {
-            WorkItemCollection workItems = GetList(project, bypassCache: true);
+            WorkItemCollection workItems = GetList(project, iterationPath: iterationPath, bypassCache: true);
 
             if (workItems.Count > 0)
             {
@@ -118,15 +113,7 @@ namespace TfsMigrationTool
 
         public static bool Exists(int workItemId)
         {
-            try
-            {
-                Store.GetWorkItem(workItemId);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
+            return Get(workItemId) != null;
         }
 
         public static void AddMappedLink(this WorkItem item, WorkItemLink link, Dictionary<int, int> idMap)

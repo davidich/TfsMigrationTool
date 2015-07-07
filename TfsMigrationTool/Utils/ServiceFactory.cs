@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Net;
+using Microsoft.TeamFoundation.Client;
 
-namespace TfsMigrationTool
+namespace TfsMigrationTool.Utils
 {
-    using System.Net;
-
-    using Microsoft.TeamFoundation.Client;
-
     public static class ServiceFactory
     {
         private static readonly Dictionary<Type, object> ServiceCache = new Dictionary<Type, object>();

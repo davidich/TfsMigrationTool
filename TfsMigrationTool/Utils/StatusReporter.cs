@@ -1,8 +1,7 @@
 ﻿using System;
-using System.Globalization;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
 
-namespace TfsMigrationTool
+namespace TfsMigrationTool.Utils
 {
     public class StatusReporter
     {
@@ -15,7 +14,7 @@ namespace TfsMigrationTool
 
         public static void ReportCopyFailure(WorkItem item, Exception ex)
         {
-            Logger.LogCopyFailure(item, ex);
+            
 
             Console.WriteLine();
             Console.WriteLine("COPY FAILURE (see logs for details)");
